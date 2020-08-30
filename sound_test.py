@@ -173,11 +173,11 @@ def measure(settings, SW):
     # else:
     #     print('You detected the white noise at %.3f s.' % t)
         
-    t = SW.getValue()/1e9
-    if t is None:
+    t = None
+    if SW.getValue() is None:
         print('You didn\'t detect the white noise!')
-        t=None
     else:
+        t = SW.getValue()/1e9
         print('You detected noise at %.3f s.' % t)
     
     return wf, raw, t
@@ -259,9 +259,13 @@ def main():
     SW = result[0]
     del result
     
-    measurement = measure(settings, SW)
-    plot(*measurement, settings)
-    
+    try:
+        measurement = measure(settings, SW)
+        plot(*measurement, settings)
+    except Exception as e:
+        # If exception occurs for any reason, try stopping the stopwatch process.
+        SW.join(forceStop=True, timeout=1)
+        raise e
 
 
 if __name__ == "__main__":
