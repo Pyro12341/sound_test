@@ -15,9 +15,6 @@ from collections.abc import Iterable
 USE_24_BIT = True
 
 
-global SW
-
-
 # Sine wave
 BASE_WAVEFORM = lambda ts, **kwarks: np.sin(2*np.pi*ts*kwarks.get('frequency', 440))
 
@@ -33,7 +30,7 @@ def to_ndarray(f):
 # Linear step function with 10 steps
 @to_ndarray
 def NOISE_PROFILE(ts, **kwarks):
-    return (ts//(kwarks['duration']//2))/10
+    return (ts//(kwarks['duration']/2))/10
     
 
     # return ts/10000
@@ -53,7 +50,7 @@ def setup():
 
     settings['frequency'] = ask('Give the note frequency [Hz]', float, d=440)
     settings['sample_rate'] = ask('Give the sample rate [Hz]', int, d=44100)
-    settings['duration'] = ask('Give the desired test duration [s]', float, d=10)
+    settings['duration'] = ask('Give the desired test duration [s]', float, d=5)
     
     return settings
 
@@ -146,38 +143,38 @@ def init_stopwatch(res, i):
     res[i] = StopWatch(hotkey=DETECT_KEY)
 
 
-def measure(settings):
-    global SW
-    
+def measure(settings, SW):
     print('\nGenerating the sound sample', end='...')
     wf, raw  = generate_waveform(BASE_WAVEFORM, NOISE_PROFILE, **settings)
-    wave_obj = sa.WaveObject(wf, num_channels=2, bytes_per_sample=3 if USE_24_BIT else 2, sample_rate=settings.get('sample_rate', 44100))
+    wave_obj = sa.WaveObject(wf, num_channels=1, bytes_per_sample=3 if USE_24_BIT else 2, sample_rate=settings.get('sample_rate', 44100))
     print('Done!')
     
     print('\nPress \'%s\' when you hear the white noise.' % DETECT_KEY)
     input('Press enter to start the experiment!')
     
-    s = timer()
+    # s = timer()
     SW.start()
     play_obj = wave_obj.play()
     remove = add_hotkey(DETECT_KEY, play_obj.stop)
     
     play_obj.wait_done()
-    e = timer()
+    # e = timer()
     remove_hotkey(remove)
     
-    t = (e-s)/1e9
-    if t > settings.get('duration', 10):
-        print('You didn\'t detect the white noise!')
-        t=None
-    else:
-        print('You detected the white noise at %.3f s.' % t)
+    # t = (e-s)/1e9
+    # if t > settings.get('duration', 10):
+    #     print('You didn\'t detect the white noise!')
+    #     t=None
+    # else:
+    #     print('You detected the white noise at %.3f s.' % t)
         
     
     if SW.getValue() is None:
-        print('(SW) You didn\'t detect the white noise!')
+        print('You didn\'t detect the white noise!')
+        t=None
     else:
-        print('(SW) You detected noise at %.3f s.' % (SW.getValue()/1e9))
+        t = SW.getValue()/1e9
+        print('You detected noise at %.3f s.' % t)
     
     return wf, raw, t
 
@@ -230,11 +227,11 @@ def plot(wf, raw, t, settings):
         ax1.axvline(t, color='red')
         ax.axvline(t, color='red', label=('%.3f dB (@ %.3f s).' % (y, t)))
         
-        # Mark the detected spot with vertical red line or...
-        t_SW = SW.getValue()/1e9
-        ax2.axvline(t_SW, color='blue')
-        ax1.axvline(t_SW, color='blue')
-        ax.axvline(t_SW, color='blue', label=('%.3f dB (@ %.3f s).' % (y, t)))
+        # # Mark the detected spot with vertical red line or...
+        # t_SW = SW.getValue()/1e9
+        # ax2.axvline(t_SW, color='blue')
+        # ax1.axvline(t_SW, color='blue')
+        # ax.axvline(t_SW, color='blue', label=('%.3f dB (@ %.3f s).' % (y, t)))
         
         # # ...black cross.
         # ax.scatter(t, y, label=('%.3f dB (@ %.3f s).' % (y, t)),zorder=1, c='k', marker='x')
@@ -247,8 +244,6 @@ def plot(wf, raw, t, settings):
     plt.show()
 
 def main():
-    global SW
-    
     # The stopwatch process will be started in parallel with settings inquiry from user in a separate thread because starting process will take noticable amount of time otherwise.
     result = [None]
     init_stopwatch_thread = Thread(name='Stopwatch init', target=init_stopwatch, args=(result, 0))
@@ -260,7 +255,7 @@ def main():
     SW = result[0]
     del result
     
-    measurement = measure(settings)
+    measurement = measure(settings, SW)
     plot(*measurement, settings)
     
 
