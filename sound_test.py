@@ -232,9 +232,9 @@ def plot(wf, raw, t, settings):
         
         # Mark the detected spot with vertical red line or...
         t_SW = SW.getValue()/1e9
-        ax2.axvline(t_SW, color='red')
-        ax1.axvline(t_SW, color='red')
-        ax.axvline(t_SW, color='red', label=('%.3f dB (@ %.3f s).' % (y, t)))
+        ax2.axvline(t_SW, color='blue')
+        ax1.axvline(t_SW, color='blue')
+        ax.axvline(t_SW, color='blue', label=('%.3f dB (@ %.3f s).' % (y, t)))
         
         # # ...black cross.
         # ax.scatter(t, y, label=('%.3f dB (@ %.3f s).' % (y, t)),zorder=1, c='k', marker='x')
