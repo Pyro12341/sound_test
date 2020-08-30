@@ -13,6 +13,7 @@ from collections.abc import Iterable
 
 
 USE_24_BIT = True
+GAUSSIAN = True
 
 
 # Sine wave
@@ -56,8 +57,10 @@ def setup():
 
 def generate_noise(ts, noiseProfile, **kwarks):
     nps = noiseProfile(ts, **kwarks)
-    return np.random.normal(0,nps) # Generates random values using gaussian profile (68.2 % chance that the random value is within (+-)nps)
-    # return nps*(2*np.random.sample(size=len(nps))-1) # Generates random values linearly between [-nps, nps)
+    if GAUSSIAN:
+        return np.random.normal(0,nps) # Generates random values using gaussian profile (68.2 % chance that the random value is within (+-)nps)
+    else:
+        return nps*(2*np.random.sample(size=len(nps))-1) # Generates random values linearly between [-nps, nps)
 
 def generate_waveform(pure, noiseProfile, **kwarks):
     d = kwarks.get('duration', 3)
@@ -82,7 +85,9 @@ def generate_waveform(pure, noiseProfile, **kwarks):
     yield ts, p, n
 
 
-# Threading implementation gave few hundred milliseconds too low value each time i tested it with time.sleep, so i switched to multiprocessing implementation.
+# Threading implementation gave few hundred milliseconds too low value each time i tested it with time.sleep,
+#  so i switched to multiprocessing implementation.
+# The mainloop implementation also gave some hundred milliseconds too slow values when tested with metronome.
 class StopWatch(Process):
     def __init__(self, hotkey=None):
         super().__init__(name='Stop Watch')
@@ -168,19 +173,16 @@ def measure(settings, SW):
     # else:
     #     print('You detected the white noise at %.3f s.' % t)
         
-    
-    if SW.getValue() is None:
+    t = SW.getValue()/1e9
+    if t is None:
         print('You didn\'t detect the white noise!')
         t=None
     else:
-        t = SW.getValue()/1e9
         print('You detected noise at %.3f s.' % t)
     
     return wf, raw, t
 
 def plot(wf, raw, t, settings):
-    global SW
-    
     ts, p, n = raw
     fig, (ax,ax1,ax2) = plt.subplots(nrows=3, sharex=True)
 
@@ -235,10 +237,12 @@ def plot(wf, raw, t, settings):
         
         # # ...black cross.
         # ax.scatter(t, y, label=('%.3f dB (@ %.3f s).' % (y, t)),zorder=1, c='k', marker='x')
+        
+        # Don't draw legend for the detected spot if nothing was detected.
+        ax.legend(loc=2)
     
     ax.grid()
     ax.set_xlabel('Time [s]')
-    ax.legend(loc=2)
     
     
     plt.show()
