@@ -14,6 +14,10 @@ from collections.abc import Iterable
 
 USE_24_BIT = True
 
+
+global SW
+
+
 # Sine wave
 BASE_WAVEFORM = lambda ts, **kwarks: np.sin(2*np.pi*ts*kwarks.get('frequency', 440))
 
@@ -81,8 +85,70 @@ def generate_waveform(pure, noiseProfile, **kwarks):
     yield ts, p, n
 
 
+# Threading implementation gave few hundred milliseconds too low value each time i tested it with time.sleep, so i switched to multiprocessing implementation.
+class StopWatch(Process):
+    def __init__(self, hotkey=None):
+        super().__init__(name='Stop Watch')
+        self._stop_event = Event()
+        self._stop_event.clear()
+        
+        self._waiter = Event()
+        self._waiter.clear()
+        
+        self._elapsed_time = Value('Q',0)
+        self._hotkey = hotkey or 'space'
+
+        super().start()
+        # Waits till the process is started.
+        self._stop_event.wait()
+    
+    def start(self):
+        if self.is_alive:
+            self._stop_event.set()
+        else:
+            raise RuntimeError()
+    
+    def join(self, *args, forceStop=False, **kwarks):
+        zeroTimer = not self._waiter.is_set()
+        if forceStop and self.is_alive():
+            self._waiter.set()
+        super().join(*args, **kwarks)
+        if zeroTimer:
+            with self._elapsed_time.get_lock():
+                self._elapsed_time.value = 0
+    
+    def getValue(self):
+        return self._elapsed_time.value or None
+    
+    def run(self):
+        s,e = None, None
+        
+        def hotkey_action():
+            if s is not None:
+                self._waiter.set()
+            
+        remove = add_hotkey(self._hotkey, hotkey_action)
+        # Inform the main process that this process is started
+        self._stop_event.set()
+        # Clears the stop event so that process halts till it is started again with start function.
+        self._stop_event.clear()
+        self._stop_event.wait()
+        
+        s = timer()
+        self._waiter.wait()
+        e = timer()
+        
+        with self._elapsed_time.get_lock():
+            self._elapsed_time.value = e-s
+        remove_hotkey(remove)
+
+def init_stopwatch(res, i):
+    res[i] = StopWatch(hotkey=DETECT_KEY)
+
 
 def measure(settings):
+    global SW
+    
     print('\nGenerating the sound sample', end='...')
     wf, raw  = generate_waveform(BASE_WAVEFORM, NOISE_PROFILE, **settings)
     wave_obj = sa.WaveObject(wf, num_channels=2, bytes_per_sample=3 if USE_24_BIT else 2, sample_rate=settings.get('sample_rate', 44100))
@@ -91,8 +157,9 @@ def measure(settings):
     print('\nPress \'%s\' when you hear the white noise.' % DETECT_KEY)
     input('Press enter to start the experiment!')
     
-    play_obj = wave_obj.play()
     s = timer()
+    SW.start()
+    play_obj = wave_obj.play()
     remove = add_hotkey(DETECT_KEY, play_obj.stop)
     
     play_obj.wait_done()
@@ -105,10 +172,18 @@ def measure(settings):
         t=None
     else:
         print('You detected the white noise at %.3f s.' % t)
+        
+    
+    if SW.getValue() is None:
+        print('(SW) You didn\'t detect the white noise!')
+    else:
+        print('(SW) You detected noise at %.3f s.' % (SW.getValue()/1e9))
     
     return wf, raw, t
 
 def plot(wf, raw, t, settings):
+    global SW
+    
     ts, p, n = raw
     fig, (ax,ax1,ax2) = plt.subplots(nrows=3, sharex=True)
 
@@ -155,6 +230,12 @@ def plot(wf, raw, t, settings):
         ax1.axvline(t, color='red')
         ax.axvline(t, color='red', label=('%.3f dB (@ %.3f s).' % (y, t)))
         
+        # Mark the detected spot with vertical red line or...
+        t_SW = SW.getValue()/1e9
+        ax2.axvline(t_SW, color='red')
+        ax1.axvline(t_SW, color='red')
+        ax.axvline(t_SW, color='red', label=('%.3f dB (@ %.3f s).' % (y, t)))
+        
         # # ...black cross.
         # ax.scatter(t, y, label=('%.3f dB (@ %.3f s).' % (y, t)),zorder=1, c='k', marker='x')
     
@@ -166,7 +247,19 @@ def plot(wf, raw, t, settings):
     plt.show()
 
 def main():
+    global SW
+    
+    # The stopwatch process will be started in parallel with settings inquiry from user in a separate thread because starting process will take noticable amount of time otherwise.
+    result = [None]
+    init_stopwatch_thread = Thread(name='Stopwatch init', target=init_stopwatch, args=(result, 0))
+    init_stopwatch_thread.start()
+    
     settings = setup()
+    
+    init_stopwatch_thread.join()
+    SW = result[0]
+    del result
+    
     measurement = measure(settings)
     plot(*measurement, settings)
     
