@@ -31,10 +31,9 @@ def to_ndarray(f):
 # Linear step function with 10 steps
 @to_ndarray
 def NOISE_PROFILE(ts, **kwarks):
-    return (ts//(kwarks['duration']/2))/10
+    return (ts//(kwarks['duration']/10))/1000 # Monotone step function
     
-
-    # return ts/10000
+    # return ts/100000 # Linear function
 
 DETECT_KEY = 'space'
 
@@ -74,11 +73,11 @@ def generate_waveform(pure, noiseProfile, **kwarks):
     # audio = pure(np.linspace(0, d, N, False), **kwarks)
     
     if USE_24_BIT:
-        ## This is for 24-bit audio. In sa.WaveObject(...) use bytes_per_sample=3
-        audio *= (2**23 - 1) / np.max(np.abs(audio))
+        # This is for 24-bit audio. In sa.WaveObject(...) use bytes_per_sample=3
+        audio *= (2**(23) - 1) / np.max(np.abs(audio))
         yield bytearray([b for i,b in enumerate(audio.astype(np.int32).tobytes()) if i % 4 != 3])
     else:
-        ## This is for 16-bit audio. In sa.WaveObject(...) use bytes_per_sample=2
+        # This is for 16-bit audio. In sa.WaveObject(...) use bytes_per_sample=2
         audio *= (2**15 - 1) / np.max(np.abs(audio))
         yield audio.astype(np.int16)
 
@@ -165,6 +164,8 @@ def measure(settings, SW):
     play_obj.wait_done()
     # e = timer()
     remove_hotkey(remove)
+    SW.join(forceStop=True)
+    
     
     # t = (e-s)/1e9
     # if t > settings.get('duration', 10):
@@ -242,7 +243,7 @@ def plot(wf, raw, t, settings):
         ax.legend(loc=2)
     
     ax.grid()
-    ax.set_xlabel('Time [s]')
+    ax2.set_xlabel('Time [s]')
     
     
     plt.show()
