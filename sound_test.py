@@ -17,8 +17,18 @@ GAUSSIAN = True
 
 
 # Sine wave
-BASE_WAVEFORM = lambda ts, **kwarks: np.sin(2*np.pi*ts*kwarks.get('frequency', 440))
-
+# BASE_WAVEFORM = lambda ts, **kwarks: np.sin(2*np.pi*ts*kwarks.get('frequency', 440))
+# BASE_WAVEFORM = lambda ts, **kwarks: np.sign(np.sin(2*np.pi*ts*kwarks.get('frequency', 440)))
+# BASE_WAVEFORM = lambda ts, **kwarks: np.mod(2*np.pi*ts*kwarks.get('frequency', 440), 10)
+def BASE_WAVEFORM(ts, **kwarks):
+    choice = kwarks.get('profile', 1)
+    if choice == 2:
+        return np.sign(np.sin(2*np.pi*ts*kwarks.get('frequency', 440)))
+    elif choice == 3:
+        ret = np.mod(ts, 1/kwarks.get('frequency', 440))
+        return ret / np.max(np.abs(ret))-0.5
+    else:
+        return np.sin(2*np.pi*ts*kwarks.get('frequency', 440))
 
 def to_ndarray(f):
     def wrapper(*args, **kwarks):
@@ -48,9 +58,10 @@ def ask(s, t, d=None):
 def setup():
     settings = {}
 
+    settings['profile'] = ask('Give the sound profile [1=Sine, 2=Square, 3=Saw]', float, d=1)
     settings['frequency'] = ask('Give the note frequency [Hz]', float, d=440)
-    settings['sample_rate'] = ask('Give the sample rate [Hz]', int, d=44100)
-    settings['duration'] = ask('Give the desired test duration [s]', float, d=5)
+    settings['sample_rate'] = ask('Give the sampling rate [Hz]', int, d=44100)
+    settings['duration'] = ask('Give the desired test duration [s]', int, d=5)
     
     return settings
 
@@ -176,7 +187,7 @@ def measure(settings, SW):
         
     t = None
     if SW.getValue() is None:
-        print('You didn\'t detect the white noise!')
+        print('You didn\'t detect any white noise!')
     else:
         t = SW.getValue()/1e9
         print('You detected noise at %.3f s.' % t)
