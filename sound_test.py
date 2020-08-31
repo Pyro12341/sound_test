@@ -20,25 +20,6 @@ USE_24_BIT = True
 GAUSSIAN = True
 
 
-def BASE_WAVEFORM(ts, **kwarks):
-    choice = kwarks.get('profile', 1)
-    if choice == 2: # Square
-        return np.sign(np.sin(2*np.pi*ts*kwarks.get('frequency', 440)))
-    elif choice == 3: # Sawtooth
-        ret = np.mod(ts, 1/kwarks.get('frequency', 440))
-        return ret / np.max(np.abs(ret))-0.5
-    elif choice == 4:
-        fp = dirname(__file__)
-        with wave.Wave_read(join_path(fp,'test.wav')) as wav:
-            bit_depth = wav.getsampwidth()
-            if bit_depth == 2:
-                USE_24_BIT = False
-            elif bit_depth == 3:
-                USE_24_BIT = True
-            pass
-    else: # If choice is not 2 or 3 the selected profile is sine wave.
-        return np.sin(2*np.pi*ts*kwarks.get('frequency', 440))
-
 def to_ndarray(f):
     def wrapper(*args, **kwarks):
         ret = f(*args, **kwarks)
@@ -50,11 +31,39 @@ def to_ndarray(f):
 # Linear step function with 10 steps
 @to_ndarray
 def NOISE_PROFILE(ts, **kwarks):
-    # return (ts//(kwarks['duration']/10))/1000 # Monotone step function
+    return (ts//(kwarks['duration']/10))/1000 # Monotone step function
     
-    return ts/1000 # Linear function
+    # return ts/1000 # Linear function
+    # return 1+0*ts # Linear function
 
 DETECT_KEY = 'space'
+
+def BASE_WAVEFORM(ts, **kwarks):
+    choice = kwarks.get('profile', 1)
+    if choice == 2: # Square
+        return np.sign(np.sin(2*np.pi*ts*kwarks.get('frequency', 440)))
+    elif choice == 3: # Sawtooth
+        ret = np.mod(ts, 1/kwarks.get('frequency', 440))
+        return ret / np.max(np.abs(ret))-0.5
+    elif choice == 4:
+        fp = dirname(__file__)
+        with wave.Wave_read(join_path(fp,'test.wav')) as wav:
+            audio = wav.readframes(wav.getnframes())
+            bit_depth = kwarks['bit_depth']
+            if bit_depth == 3:
+                audio = np.frombuffer(b''.join([audio[3*i:3*(i+1)]+b'\x00' for i in range(len(audio))]), dtype=np.int32) # Not tested at all
+            elif bit_depth == 2:
+                audio = np.frombuffer(audio, dtype=np.int16)
+            else:
+                raise Exception('Non-supported bit depth')
+            
+            audio = audio.astype(float)
+            
+            return (audio - (audio.max()-audio.min())/2)/np.max(np.abs(audio))
+            
+    else: # If choice is not 2 or 3 the selected profile is sine wave.
+        return np.sin(2*np.pi*ts*kwarks.get('frequency', 440))
+
 
 def ask(s, t, d=None):
     while 1:
@@ -66,6 +75,8 @@ def ask(s, t, d=None):
 
 def setup():
     settings = {}
+    settings['channels'] = 1
+    settings['bit_depth'] = 3 if USE_24_BIT else 2
 
     settings['profile'] = ask('Give the sound profile [1=Sine, 2=Square, 3=Saw, 4=test.wav]', int, d=1)
     if settings['profile'] != 4:
@@ -77,6 +88,8 @@ def setup():
         with wave.Wave_read(join_path(fp,'test.wav')) as wav:
             settings['sample_rate'] = wav.getframerate()
             settings['duration'] = wav.getnframes()/settings['sample_rate']
+            settings['channels'] = wav.getnchannels()
+            settings['bit_depth'] = wav.getsampwidth()
         
     
     return settings
@@ -92,21 +105,24 @@ def generate_waveform(pure, noiseProfile, **kwarks):
     d = kwarks.get('duration', 3)
     N = int(d * kwarks.get('sample_rate', 44100))
     
-    ts = np.linspace(0, d, N, False)
+    ts = np.linspace(0, d, N*kwarks.get('channels', 1), False)
     
     p = pure(ts, **kwarks)
     n = generate_noise(ts, noiseProfile, **kwarks)
     audio = p + n
     # audio = pure(np.linspace(0, d, N, False), **kwarks)
     
-    if USE_24_BIT:
+    bit_depth = kwarks['bit_depth']
+    if bit_depth == 3:
         # This is for 24-bit audio. In sa.WaveObject(...) use bytes_per_sample=3
         audio *= (2**(23) - 1) / np.max(np.abs(audio))
         yield bytearray([b for i,b in enumerate(audio.astype(np.int32).tobytes()) if i % 4 != 3])
-    else:
+    elif bit_depth == 2:
         # This is for 16-bit audio. In sa.WaveObject(...) use bytes_per_sample=2
         audio *= (2**15 - 1) / np.max(np.abs(audio))
         yield audio.astype(np.int16)
+    else:
+        raise Exception('Non-supported bit depth')
 
     yield ts, p, n
 
@@ -177,7 +193,7 @@ def init_stopwatch(res, i):
 def measure(settings, SW):
     print('\nGenerating the sound sample', end='...')
     wf, raw  = generate_waveform(BASE_WAVEFORM, NOISE_PROFILE, **settings)
-    wave_obj = sa.WaveObject(wf, num_channels=1, bytes_per_sample=3 if USE_24_BIT else 2, sample_rate=settings.get('sample_rate', 44100))
+    wave_obj = sa.WaveObject(wf, num_channels=settings['channels'], bytes_per_sample=settings['bit_depth'], sample_rate=settings.get('sample_rate', 44100))
     print('Done!')
     
     print('\nPress \'%s\' when you hear the white noise.' % DETECT_KEY)
@@ -216,7 +232,10 @@ def plot(wf, raw, t, settings):
 
     f_np = lambda t: NOISE_PROFILE(t, **settings)
     
-    if USE_24_BIT:
+    
+    # wf_o = np.frombuffer(b''.join([wf[3*i:3*(i+1)]+b'\x00' for i in range(len(wf))]), np.int32)
+    
+    if settings['bit_depth'] == 3:
         wf_raw = p+n
         wf = (wf_raw * (2**23 - 1) / np.max(np.abs(wf_raw))).astype(np.int32)
     
@@ -241,7 +260,6 @@ def plot(wf, raw, t, settings):
     
     ax1.grid()
     ax1.legend(loc=2)
-    
     
     ys = 20*np.log10(1/np_ts+1) # == 20 log10(A_signal/A_noise) == 20 log10((p+n)/n); p==1 & n==NOISE_PROFILE
     ax.plot(ts, ys, zorder=0)
