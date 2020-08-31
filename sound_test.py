@@ -1,5 +1,9 @@
+from os.path import dirname
+from os.path import join as join_path
+
 import numpy as np
 import simpleaudio as sa
+import wave
 
 import matplotlib.pyplot as plt
 
@@ -16,18 +20,23 @@ USE_24_BIT = True
 GAUSSIAN = True
 
 
-# Sine wave
-# BASE_WAVEFORM = lambda ts, **kwarks: np.sin(2*np.pi*ts*kwarks.get('frequency', 440))
-# BASE_WAVEFORM = lambda ts, **kwarks: np.sign(np.sin(2*np.pi*ts*kwarks.get('frequency', 440)))
-# BASE_WAVEFORM = lambda ts, **kwarks: np.mod(2*np.pi*ts*kwarks.get('frequency', 440), 10)
 def BASE_WAVEFORM(ts, **kwarks):
     choice = kwarks.get('profile', 1)
-    if choice == 2:
+    if choice == 2: # Square
         return np.sign(np.sin(2*np.pi*ts*kwarks.get('frequency', 440)))
-    elif choice == 3:
+    elif choice == 3: # Sawtooth
         ret = np.mod(ts, 1/kwarks.get('frequency', 440))
         return ret / np.max(np.abs(ret))-0.5
-    else:
+    elif choice == 4:
+        fp = dirname(__file__)
+        with wave.Wave_read(join_path(fp,'test.wav')) as wav:
+            bit_depth = wav.getsampwidth()
+            if bit_depth == 2:
+                USE_24_BIT = False
+            elif bit_depth == 3:
+                USE_24_BIT = True
+            pass
+    else: # If choice is not 2 or 3 the selected profile is sine wave.
         return np.sin(2*np.pi*ts*kwarks.get('frequency', 440))
 
 def to_ndarray(f):
@@ -41,9 +50,9 @@ def to_ndarray(f):
 # Linear step function with 10 steps
 @to_ndarray
 def NOISE_PROFILE(ts, **kwarks):
-    return (ts//(kwarks['duration']/10))/1000 # Monotone step function
+    # return (ts//(kwarks['duration']/10))/1000 # Monotone step function
     
-    # return ts/100000 # Linear function
+    return ts/1000 # Linear function
 
 DETECT_KEY = 'space'
 
@@ -53,15 +62,22 @@ def ask(s, t, d=None):
         try:
             return t(inp if d is None else (inp or d))
         except ValueError:
-            print('The note frequency needs to be a %s!' % t.__name__)
+            print('The given value needs to be a %s!' % t.__name__)
 
 def setup():
     settings = {}
 
-    settings['profile'] = ask('Give the sound profile [1=Sine, 2=Square, 3=Saw]', float, d=1)
-    settings['frequency'] = ask('Give the note frequency [Hz]', float, d=440)
-    settings['sample_rate'] = ask('Give the sampling rate [Hz]', int, d=44100)
-    settings['duration'] = ask('Give the desired test duration [s]', int, d=5)
+    settings['profile'] = ask('Give the sound profile [1=Sine, 2=Square, 3=Saw, 4=test.wav]', int, d=1)
+    if settings['profile'] != 4:
+        settings['frequency'] = ask('Give the note frequency [Hz]', float, d=440)
+        settings['sample_rate'] = ask('Give the sampling rate [Hz]', int, d=44100)
+        settings['duration'] = ask('Give the desired test duration [s]', float, d=5)
+    else:
+        fp = dirname(__file__)
+        with wave.Wave_read(join_path(fp,'test.wav')) as wav:
+            settings['sample_rate'] = wav.getframerate()
+            settings['duration'] = wav.getnframes()/settings['sample_rate']
+        
     
     return settings
 
@@ -255,6 +271,7 @@ def plot(wf, raw, t, settings):
     
     ax.grid()
     ax2.set_xlabel('Time [s]')
+    ax.set_ylabel('$\mathrm{SNR_{dB}}$')
     
     
     plt.show()
