@@ -18,6 +18,7 @@ from collections.abc import Iterable
 
 USE_24_BIT = True
 GAUSSIAN = True
+DETECT_KEY = 'space'
 
 
 def to_ndarray(f):
@@ -36,7 +37,6 @@ def NOISE_PROFILE(ts, **kwarks):
     # return ts/1000 # Linear function
     # return 1+0*ts # Linear function
 
-DETECT_KEY = 'space'
 
 def BASE_WAVEFORM(ts, **kwarks):
     choice = kwarks.get('profile', 1)
