@@ -40,12 +40,12 @@ def NOISE_PROFILE(ts, **kwarks):
 
 def BASE_WAVEFORM(ts, **kwarks):
     choice = kwarks.get('profile', 1)
-    if choice == 2: # Square
+    if choice == 1: # Square
         return np.sign(np.sin(2*np.pi*ts*kwarks.get('frequency', 440)))
-    elif choice == 3: # Sawtooth
+    elif choice == 2: # Sawtooth
         ret = np.mod(ts, 1/kwarks.get('frequency', 440))
         return ret / np.max(np.abs(ret))-0.5
-    elif choice == 4:
+    elif choice == 3:
         fp = dirname(__file__)
         with wave.Wave_read(join_path(fp,'test.wav')) as wav:
             audio = wav.readframes(wav.getnframes())
@@ -61,7 +61,7 @@ def BASE_WAVEFORM(ts, **kwarks):
             
             return (audio - (audio.max()-audio.min())/2)/np.max(np.abs(audio))
             
-    else: # If choice is not 2 or 3 the selected profile is sine wave.
+    else: # If choice is not 1, 2 or 3 the selected profile is sine wave.
         return np.sin(2*np.pi*ts*kwarks.get('frequency', 440))
 
 
@@ -78,8 +78,8 @@ def setup():
     settings['channels'] = 1
     settings['bit_depth'] = 3 if USE_24_BIT else 2
 
-    settings['profile'] = ask('Give the sound profile [1=Sine, 2=Square, 3=Saw, 4=test.wav]', int, d=1)
-    if settings['profile'] != 4:
+    settings['profile'] = ask('Give the sound profile [0=Sine, 1=Square, 2=Saw, 3=test.wav]', int, d=0)
+    if settings['profile'] != 3:
         settings['frequency'] = ask('Give the note frequency [Hz]', float, d=440)
         settings['sample_rate'] = ask('Give the sampling rate [Hz]', int, d=44100)
         settings['duration'] = ask('Give the desired test duration [s]', float, d=5)
@@ -241,7 +241,7 @@ def plot(wf, raw, t, settings):
     
     
     ax2.scatter(ts,p+n, s=4, zorder=0, label='Waveform')
-    ax2.plot(ts,p, zorder=1, c='k', label='Sine wave')
+    ax2.plot(ts,p, zorder=1, c='k', label=('%s wave' % {1:'Square',2:'Sawtooth',3:'test.wav'}.get(settings['profile'], 'Sine')))
     
     ax2.grid()
     ax2.legend(loc=2)
